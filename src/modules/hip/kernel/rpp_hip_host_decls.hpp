@@ -22,6 +22,8 @@
 
 // fused_functions
 
+RppStatus hip_exec_color_twist_batch(Rpp8u *srcPtr, Rpp8u *dstPtr, rpp::Handle& handle, RppiChnFormat chnFormat, Rpp32u channel, Rpp32s plnpkdind, Rpp32u max_height, Rpp32u max_width);
+
 
 // geometry_transforms
 
