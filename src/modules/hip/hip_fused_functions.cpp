@@ -1,6 +1,7 @@
 #include "hip/hip_runtime_api.h"
 #include "hip_declarations.hpp"
 #include <hip/rpp_hip_common.hpp>
+#include "kernel/rpp_hip_host_decls.hpp"
 
 /******************** color_twist ********************/
 
@@ -19,9 +20,10 @@ color_twist_hip_batch(Rpp8u* srcPtr, Rpp8u* dstPtr, rpp::Handle& handle, RppiChn
         plnpkdind = 1;
     else
         plnpkdind = 3;
-
     Rpp32u max_height, max_width;
     max_size(handle.GetInitHandle()->mem.mgpu.csrcSize.height, handle.GetInitHandle()->mem.mgpu.csrcSize.width, handle.GetBatchSize(), &max_height, &max_width);
+
+#if defined (HIPRTC)
 
     std::vector<size_t> vld{32, 32, 1};
     std::vector<size_t> vgd{max_width, max_height, handle.GetBatchSize()};
@@ -44,6 +46,12 @@ color_twist_hip_batch(Rpp8u* srcPtr, Rpp8u* dstPtr, rpp::Handle& handle, RppiChn
                                                                                    handle.GetInitHandle()->mem.mgpu.inc,
                                                                                    plnpkdind,
                                                                                    plnpkdind);
+
+#elif defined(STATIC)
+
+    hip_exec_color_twist_batch(srcPtr, dstPtr, handle, chnFormat, channel, plnpkdind, max_height, max_width);
+
+#endif
 
     return RPP_SUCCESS;
 }
