@@ -288,25 +288,25 @@ extern "C" __global__ void brightness(unsigned char *input,
 
 // 10 - WORKING - Remove unnecessary arguments | Replicate OpenVX style (PLN1, PLN3, PKD3), reduce dimensions
 
-// End to end time
+// End to end time [ Format - Vega10 time(s) | Vega 20 time(s) | Type ]
 
-// 8 224x224 images GPU Time - BatchPD : s PKD3
-// 8 224x224 images GPU Time - BatchPD : s PLN3
-// 8 224x224 images GPU Time - BatchPD : s PLN1
+// 8 224x224 images GPU Time - BatchPD : 0.000552s | 0.000301s | PKD3
+// 8 224x224 images GPU Time - BatchPD : 0.00051s | 0.000289s | PLN3
+// 8 224x224 images GPU Time - BatchPD : 0.000449s | 0.000236s | PLN1
 
-// 32 3840x2160 images GPU Time - BatchPD : s PKD3
-// 32 3840x2160 images GPU Time - BatchPD : s PLN3
-// 32 3840x2160 images GPU Time - BatchPD : s PLN1
+// 32 3840x2160 images GPU Time - BatchPD : 0.009684s | 0.004431s | PKD3
+// 32 3840x2160 images GPU Time - BatchPD : 0.009622s | 0.004509s | PLN3
+// 32 3840x2160 images GPU Time - BatchPD : 0.003894s | 0.001819s | PLN1
 
 // Profiler time
 
-// 8 224x224 images GPU Time - BatchPD : ms = s PKD3
-// 8 224x224 images GPU Time - BatchPD : ms = s PLN3
-// 8 224x224 images GPU Time - BatchPD : ms = s PLN1
+// 8 224x224 images GPU Time - BatchPD : = 0.000024407s | 0.000005158s | PKD3
+// 8 224x224 images GPU Time - BatchPD : = 0.000022826s | 0.0000052s | PLN3
+// 8 224x224 images GPU Time - BatchPD : = 0.000011283s | 0.000003299s | PLN1
 
-// 32 3840x2160 images GPU Time - BatchPD : ms = s PKD3
-// 32 3840x2160 images GPU Time - BatchPD : ms = s PLN3
-// 32 3840x2160 images GPU Time - BatchPD : ms = s PLN1
+// 32 3840x2160 images GPU Time - BatchPD : = 0.004557237s | ? | PKD3
+// 32 3840x2160 images GPU Time - BatchPD : = 0.004518855s | ? | PLN3
+// 32 3840x2160 images GPU Time - BatchPD : = 0.001666841s | ? | PLN1
 
 // extern "C" __global__ void brightness_batch(unsigned char *srcPtr,
 //                                             unsigned char *dstPtr,
@@ -344,8 +344,6 @@ extern "C" __global__ void brightness(unsigned char *input,
 //     int globalThreads_y = handle.GetBatchSize();
 //     int globalThreads_z = 1;
 
-
-
 //     hipLaunchKernelGGL(brightness_batch,
 //                        dim3(ceil((float)globalThreads_x/localThreads_x), ceil((float)globalThreads_y/localThreads_y), ceil((float)globalThreads_z/localThreads_z)),
 //                        dim3(localThreads_x, localThreads_y, localThreads_z),
@@ -378,25 +376,25 @@ extern "C" __global__ void brightness(unsigned char *input,
 
 // 11 - WORKING - Scale back to id_x, id_y, id_z | Separate PLN/PKD | Vectorization | Remove unnecessary arguments | Replicate OpenVX style (PLN1, PLN3, PKD3)
 
-// End to end time
+// End to end time [ Format - Vega10 time(s) | Vega 20 time(s) | Type ]
 
-// 8 224x224 images GPU Time - BatchPD : s PKD3
-// 8 224x224 images GPU Time - BatchPD : s PLN3
-// 8 224x224 images GPU Time - BatchPD : s PLN1
+// 8 224x224 images GPU Time - BatchPD : 0.000552s | 0.000301s | PKD3
+// 8 224x224 images GPU Time - BatchPD : 0.00051s | 0.000289s | PLN3
+// 8 224x224 images GPU Time - BatchPD : 0.000449s | 0.000236s | PLN1
 
-// 32 3840x2160 images GPU Time - BatchPD : s PKD3
-// 32 3840x2160 images GPU Time - BatchPD : s PLN3
-// 32 3840x2160 images GPU Time - BatchPD : s PLN1
+// 32 3840x2160 images GPU Time - BatchPD : 0.009684s | 0.004431s | PKD3
+// 32 3840x2160 images GPU Time - BatchPD : 0.009622s | 0.004509s | PLN3
+// 32 3840x2160 images GPU Time - BatchPD : 0.003894s | 0.001819s | PLN1
 
 // Profiler time
 
-// 8 224x224 images GPU Time - BatchPD : ms = s PKD3
-// 8 224x224 images GPU Time - BatchPD : ms = s PLN3
-// 8 224x224 images GPU Time - BatchPD : ms = s PLN1
+// 8 224x224 images GPU Time - BatchPD : = 0.000024407s | 0.000005158s | PKD3
+// 8 224x224 images GPU Time - BatchPD : = 0.000022826s | 0.0000052s | PLN3
+// 8 224x224 images GPU Time - BatchPD : = 0.000011283s | 0.000003299s | PLN1
 
-// 32 3840x2160 images GPU Time - BatchPD : ms = s PKD3
-// 32 3840x2160 images GPU Time - BatchPD : ms = s PLN3
-// 32 3840x2160 images GPU Time - BatchPD : ms = s PLN1
+// 32 3840x2160 images GPU Time - BatchPD : = 0.004557237s | ? | PKD3
+// 32 3840x2160 images GPU Time - BatchPD : = 0.004518855s | ? | PLN3
+// 32 3840x2160 images GPU Time - BatchPD : = 0.001666841s | ? | PLN1
 
 extern "C" __global__ void brightness_pkd_batch(uchar *srcPtr,
                                                 uchar *dstPtr,
