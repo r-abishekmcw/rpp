@@ -1,21 +1,49 @@
 /* This file was automatically generated.  Do not edit! */
 
-extern "C" __global__ void brightness_batch(   unsigned char* input,
-                                     unsigned char* output,
-                                     float *alpha,
-                                     float *beta,
-                                     unsigned int *xroi_begin,
-                                     unsigned int *xroi_end,
-                                     unsigned int *yroi_begin,
-                                     unsigned int *yroi_end,
-                                     unsigned int *height,
-                                     unsigned int *width,
-                                     unsigned int *max_width,
-                                     unsigned long *batch_index,
-                                    const unsigned int channel,
-                                     unsigned int *inc, // use width * height for pln and 1 for pkd
-                                    const int plnpkdindex // use 1 pln 3 for pkd
-                                    );
+// 1
+// extern "C" __global__ void brightness_batch(unsigned char *input,
+//                                             unsigned char *output,
+//                                             float *alpha,
+//                                             float *beta,
+//                                             unsigned int *xroi_begin,
+//                                             unsigned int *xroi_end,
+//                                             unsigned int *yroi_begin,
+//                                             unsigned int *yroi_end,
+//                                             unsigned int *height,
+//                                             unsigned int *width,
+//                                             unsigned int *max_width,
+//                                             unsigned long long *batch_index,
+//                                             const unsigned int channel,
+//                                             unsigned int *inc, // use width * height for pln and 1 for pkd
+//                                             const int plnpkdindex); // use 1 pln 3 for pkd
+
+// 10
+// extern "C" __global__ void brightness_batch(unsigned char *srcPtr,
+//                                             unsigned char *dstPtr,
+//                                             float *alpha,
+//                                             float *beta,
+//                                             unsigned long long *batch_index);
+
+// 11
+extern "C" __global__ void brightness_pkd_batch(uchar *srcPtr,
+                                                uchar *dstPtr,
+                                                float *alpha,
+                                                float *beta,
+                                                uint *srcWidth,
+                                                uint *srcHeight,
+                                                uint srcStride,
+                                                uint dstStride,
+                                                unsigned long long *batch_index);
+extern "C" __global__ void brightness_pln_batch(uchar *srcPtr,
+                                                uchar *dstPtr,
+                                                float *alpha,
+                                                float *beta,
+                                                uint *srcWidth,
+                                                uint *srcHeight,
+                                                uint srcStride,
+                                                uint dstStride,
+                                                unsigned long long *batch_index);
+
 extern "C" __global__ void gamma_correction_batch(unsigned char *input,
                                                 unsigned char *output,
                                                 float *gamma,
@@ -1550,7 +1578,11 @@ const std::map<std::string, const void*>& funMap1()
                                                         {"inclusive_OR",reinterpret_cast<const void*>(inclusive_OR)},
                                                         {"inclusive_OR_batch",reinterpret_cast<const void*>(inclusive_OR_batch)},
                                                         {"brightness",reinterpret_cast<const void*>(brightness)},
-                                                        {"brightness_batch", reinterpret_cast<const void*>(brightness_batch)},
+                                                        // 1, 10
+                                                        // {"brightness_batch", reinterpret_cast<const void*>(brightness_batch)},
+                                                        // 11
+                                                        {"brightness_pkd_batch", reinterpret_cast<const void*>(brightness_pkd_batch)},
+                                                        {"brightness_pln_batch", reinterpret_cast<const void*>(brightness_pln_batch)},
                                                         {"gamma_correction_batch",reinterpret_cast<const void*>(gamma_correction_batch)},
                                                         {"gamma_correction",reinterpret_cast<const void*>(gamma_correction)},
                                                         {"contrast_batch",reinterpret_cast<const void*>(contrast_batch)},
