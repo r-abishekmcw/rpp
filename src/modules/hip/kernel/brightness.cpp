@@ -6,6 +6,10 @@
 
 #define saturate_8u(value) ((value) > 255 ? 255 : ((value) < 0 ? 0 : (value)))
 
+typedef struct d_float8 {
+    float data[8];
+} d_float8;
+
 __device__ unsigned char brighten(unsigned char input_pixel, float alpha, float beta)
 {
     return saturate_8u(alpha * input_pixel + beta);
@@ -286,7 +290,7 @@ extern "C" __global__ void brightness(unsigned char *input,
 
 
 
-// 10 - WORKING - Remove unnecessary arguments | Replicate OpenVX style (PLN1, PLN3, PKD3), reduce dimensions
+// 10 - WORKING - Vectorization | Remove unnecessary arguments | Replicate OpenVX style (PLN1, PLN3, PKD3), Reduce dimensions
 
 // End to end time [ Format - Vega10 time(s) | Vega 20 time(s) | Type ]
 
@@ -378,266 +382,54 @@ extern "C" __global__ void brightness(unsigned char *input,
 
 // End to end time [ Format - Vega10 time(s) | Vega 20 time(s) | Type ]
 
-// 8 224x224 images GPU Time - BatchPD : 0.000552s | 0.000301s | PKD3
-// 8 224x224 images GPU Time - BatchPD : 0.00051s | 0.000289s | PLN3
-// 8 224x224 images GPU Time - BatchPD : 0.000449s | 0.000236s | PLN1
+// 8 224x224 images GPU Time - BatchPD : 0.000546s | 0.00033s | PKD3
+// 8 224x224 images GPU Time - BatchPD : 0.000569s | 0.000344s | PLN3
+// 8 224x224 images GPU Time - BatchPD : 0.00046s | 0.000296s | PLN1
 
-// 32 3840x2160 images GPU Time - BatchPD : 0.009684s | 0.004431s | PKD3
-// 32 3840x2160 images GPU Time - BatchPD : 0.009622s | 0.004509s | PLN3
-// 32 3840x2160 images GPU Time - BatchPD : 0.003894s | 0.001819s | PLN1
-
-// Profiler time
-
-// 8 224x224 images GPU Time - BatchPD : = 0.000024407s | 0.000005158s | PKD3
-// 8 224x224 images GPU Time - BatchPD : = 0.000022826s | 0.0000052s | PLN3
-// 8 224x224 images GPU Time - BatchPD : = 0.000011283s | 0.000003299s | PLN1
-
-// 32 3840x2160 images GPU Time - BatchPD : = 0.004557237s | ? | PKD3
-// 32 3840x2160 images GPU Time - BatchPD : = 0.004518855s | ? | PLN3
-// 32 3840x2160 images GPU Time - BatchPD : = 0.001666841s | ? | PLN1
-
-extern "C" __global__ void brightness_pkd_batch(uchar *srcPtr,
-                                                uchar *dstPtr,
-                                                float *alpha,
-                                                float *beta,
-                                                uint *srcWidth,
-                                                uint *srcHeight,
-                                                uint srcStride,
-                                                uint dstStride,
-                                                unsigned long long *batch_index)
-{
-    int id_x = (hipBlockIdx_x * hipBlockDim_x + hipThreadIdx_x) * 8;
-    int id_y = hipBlockIdx_y * hipBlockDim_y + hipThreadIdx_y;
-    int id_z = hipBlockIdx_z * hipBlockDim_z + hipThreadIdx_z;
-
-    int srcElementsInRow = srcWidth[id_z] * 3;
-
-    if ((id_y >= srcHeight[id_z]) || (id_x >= srcElementsInRow))
-    {
-        return;
-    }
-
-    uint srcIdx = batch_index[id_z] + id_y * srcStride + id_x;
-    uint dstIdx = batch_index[id_z] + id_y * dstStride + id_x;
-
-    if (id_x + 7 >= srcElementsInRow)
-    {
-        int diff = srcElementsInRow - id_x;
-        for (int x = 0; x < diff; x++)
-        {
-            dstPtr[dstIdx] = brighten_fmaf((float)srcPtr[srcIdx], alpha[id_z], beta[id_z]);
-            srcIdx++;
-            dstIdx++;
-        }
-
-        return;
-    }
-
-    uint2 src = *((uint2 *)(&srcPtr[srcIdx]));
-    uint2 dst;
-
-    float4 alpha4 = (float4)alpha[id_z];
-    float4 beta4 = (float4)beta[id_z];
-
-    dst.x = rpp_hip_pack(rpp_hip_unpack(src.x) * alpha4 + beta4);
-    dst.y = rpp_hip_pack(rpp_hip_unpack(src.y) * alpha4 + beta4);
-
-    *((uint2 *)(&dstPtr[dstIdx])) = dst;
-}
-
-extern "C" __global__ void brightness_pln_batch(uchar *srcPtr,
-                                                uchar *dstPtr,
-                                                float *alpha,
-                                                float *beta,
-                                                uint *srcWidth,
-                                                uint *srcHeight,
-                                                uint srcStride,
-                                                uint dstStride,
-                                                uint srcImageSizeMax,
-                                                uint dstImageSizeMax,
-                                                uint channel,
-                                                unsigned long long *batch_index)
-{
-    int id_x = (hipBlockIdx_x * hipBlockDim_x + hipThreadIdx_x) * 8;
-    int id_y = hipBlockIdx_y * hipBlockDim_y + hipThreadIdx_y;
-    int id_z = hipBlockIdx_z * hipBlockDim_z + hipThreadIdx_z;
-
-    int currentChannel = id_z % channel;
-    id_z /= channel;
-
-    int srcElementsInRow = srcWidth[id_z];
-
-    if ((id_y >= srcHeight[id_z]) || (id_x >= srcElementsInRow))
-    {
-        return;
-    }
-
-    uint srcIdx = batch_index[id_z] + (srcImageSizeMax * currentChannel) + id_y * srcStride + id_x;
-    uint dstIdx = batch_index[id_z] + (dstImageSizeMax * currentChannel) + id_y * dstStride + id_x;
-
-    if (id_x + 7 >= srcElementsInRow)
-    {
-        int diff = srcElementsInRow - id_x;
-        for (int x = 0; x < diff; x++)
-        {
-            dstPtr[dstIdx] = brighten_fmaf((float)srcPtr[srcIdx], alpha[id_z], beta[id_z]);
-            srcIdx++;
-            dstIdx++;
-        }
-
-        return;
-    }
-
-    uint2 src = *((uint2 *)(&srcPtr[srcIdx]));
-    uint2 dst;
-
-    float4 alpha4 = (float4)alpha[id_z];
-    float4 beta4 = (float4)beta[id_z];
-
-    dst.x = rpp_hip_pack(rpp_hip_unpack(src.x) * alpha4 + beta4);
-    dst.y = rpp_hip_pack(rpp_hip_unpack(src.y) * alpha4 + beta4);
-
-    *((uint2 *)(&dstPtr[dstIdx])) = dst;
-}
-
-#if defined(STATIC)
-RppStatus hip_exec_brightness_batch(Rpp8u *srcPtr, Rpp8u *dstPtr, rpp::Handle& handle, RppiChnFormat chnFormat, Rpp32u channel, Rpp32s plnpkdind, Rpp32u max_height, Rpp32u max_width)
-{
-    if (plnpkdind == 3)
-    {
-        uint srcStride = max_width * channel;
-        uint dstStride = max_width * channel;
-
-        int localThreads_x = 16;
-        int localThreads_y = 16;
-        int localThreads_z = 1;
-        int globalThreads_x = (int)(max_width * 3 + 7) >> 3;
-        int globalThreads_y = max_height;
-        int globalThreads_z = handle.GetBatchSize();
-
-        hipLaunchKernelGGL(brightness_pkd_batch,
-                           dim3(ceil((float)globalThreads_x/localThreads_x), ceil((float)globalThreads_y/localThreads_y), ceil((float)globalThreads_z/localThreads_z)),
-                           dim3(localThreads_x, localThreads_y, localThreads_z),
-                           0,
-                           handle.GetStream(),
-                           srcPtr,
-                           dstPtr,
-                           handle.GetInitHandle()->mem.mgpu.floatArr[0].floatmem,
-                           handle.GetInitHandle()->mem.mgpu.floatArr[1].floatmem,
-                           handle.GetInitHandle()->mem.mgpu.srcSize.width,
-                           handle.GetInitHandle()->mem.mgpu.srcSize.height,
-                           srcStride,
-                           dstStride,
-                           handle.GetInitHandle()->mem.mgpu.srcBatchIndex);
-    }
-    else
-    {
-        uint srcStride = max_width;
-        uint dstStride = max_width;
-
-        uint srcImageSizeMax = max_width * max_height;
-        uint dstImageSizeMax = max_width * max_height;
-
-        int localThreads_x = 16;
-        int localThreads_y = 16;
-        int localThreads_z = 1;
-        int globalThreads_x = (max_width + 7) >> 3;
-        int globalThreads_y = max_height;
-        int globalThreads_z = channel * handle.GetBatchSize();
-
-        hipLaunchKernelGGL(brightness_pln_batch,
-                           dim3(ceil((float)globalThreads_x/localThreads_x), ceil((float)globalThreads_y/localThreads_y), ceil((float)globalThreads_z/localThreads_z)),
-                           dim3(localThreads_x, localThreads_y, localThreads_z),
-                           0,
-                           handle.GetStream(),
-                           srcPtr,
-                           dstPtr,
-                           handle.GetInitHandle()->mem.mgpu.floatArr[0].floatmem,
-                           handle.GetInitHandle()->mem.mgpu.floatArr[1].floatmem,
-                           handle.GetInitHandle()->mem.mgpu.srcSize.width,
-                           handle.GetInitHandle()->mem.mgpu.srcSize.height,
-                           srcStride,
-                           dstStride,
-                           srcImageSizeMax,
-                           dstImageSizeMax,
-                           channel,
-                           handle.GetInitHandle()->mem.mgpu.srcBatchIndex);
-    }
-
-    return RPP_SUCCESS;
-}
-#endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// 12 - WORKING? - Replicate OpenVX style (PLN1, PLN3, PKD3), reduce dimensions, Remove unnecessary arguments
-
-// End to end time
-
-// 8 224x224 images GPU Time - BatchPD : s PKD3
-// 8 224x224 images GPU Time - BatchPD : s PLN3
-// 8 224x224 images GPU Time - BatchPD : s PLN1
-
-// 32 3840x2160 images GPU Time - BatchPD : s PKD3
-// 32 3840x2160 images GPU Time - BatchPD : s PLN3
-// 32 3840x2160 images GPU Time - BatchPD : s PLN1
+// 32 3840x2160 images GPU Time - BatchPD : 0.010457s | 0.005449s | PKD3
+// 32 3840x2160 images GPU Time - BatchPD : 0.010458s | 0.005569s | PLN3
+// 32 3840x2160 images GPU Time - BatchPD : 0.004218s | 0.002196s | PLN1
 
 // Profiler time
 
-// 8 224x224 images GPU Time - BatchPD : ms = s PKD3
-// 8 224x224 images GPU Time - BatchPD : ms = s PLN3
-// 8 224x224 images GPU Time - BatchPD : ms = s PLN1
+// 8 224x224 images GPU Time - BatchPD : = 0.000024583s | 0.000007067s | PKD3
+// 8 224x224 images GPU Time - BatchPD : = 0.000028493s | 0.000009019s | PLN3
+// 8 224x224 images GPU Time - BatchPD : = 0.00001566s | 0.000005657s | PLN1
 
-// 32 3840x2160 images GPU Time - BatchPD : ms = s PKD3
-// 32 3840x2160 images GPU Time - BatchPD : ms = s PLN3
-// 32 3840x2160 images GPU Time - BatchPD : ms = s PLN1
+// 32 3840x2160 images GPU Time - BatchPD : = 0.0049321s | ? | PKD3
+// 32 3840x2160 images GPU Time - BatchPD : = 0.004909427s | ? | PLN3
+// 32 3840x2160 images GPU Time - BatchPD : = 0.001806313s | ? | PLN1
 
-// extern "C" __global__ void brightness_batch(unsigned char *input,
-//                                             unsigned char *output,
-//                                             float *alpha,
-//                                             float *beta,
-//                                             unsigned long long *batch_index,
-//                                             unsigned int max_buffer_size,
-//                                             int diff)
+// extern "C" __global__ void brightness_pkd_batch(uchar *srcPtr,
+//                                                 uchar *dstPtr,
+//                                                 float *alpha,
+//                                                 float *beta,
+//                                                 uint *srcWidth,
+//                                                 uint *srcHeight,
+//                                                 uint srcStride,
+//                                                 uint dstStride,
+//                                                 unsigned long long *batch_index)
 // {
 //     int id_x = (hipBlockIdx_x * hipBlockDim_x + hipThreadIdx_x) * 8;
 //     int id_y = hipBlockIdx_y * hipBlockDim_y + hipThreadIdx_y;
+//     int id_z = hipBlockIdx_z * hipBlockDim_z + hipThreadIdx_z;
 
-//     uint srcIdx = batch_index[id_y] + id_x;
-//     uint dstIdx = batch_index[id_y] + id_x;
+//     int srcElementsInRow = srcWidth[id_z] * 3;
 
-//     if (srcIdx + 8 >= max_buffer_size)
+//     if ((id_y >= srcHeight[id_z]) || (id_x >= srcElementsInRow))
 //     {
-//         brighten_fmaf((float)input[srcIdx], alpha[id_y], beta[id_y]);
-//         brighten_fmaf((float)input[srcIdx], alpha[id_y], beta[id_y]);
-//         brighten_fmaf((float)input[srcIdx], alpha[id_y], beta[id_y]);
-//         brighten_fmaf((float)input[srcIdx], alpha[id_y], beta[id_y]);
+//         return;
+//     }
 
+//     uint srcIdx = batch_index[id_z] + id_y * srcStride + id_x;
+//     uint dstIdx = batch_index[id_z] + id_y * dstStride + id_x;
 
-//         // int diff = max_buffer_size - 1 - srcIdx;
-//         1
-//         2
-//         3
-//         4
-//         5
-//         6
-//         7
-//         for (int x = 0; x <= diff; x++)
+//     if (id_x + 7 >= srcElementsInRow)
+//     {
+//         int diff = srcElementsInRow - id_x;
+//         for (int x = 0; x < diff; x++)
 //         {
-//             output[dstIdx] = brighten_fmaf((float)input[srcIdx], alpha[id_y], beta[id_y]);
+//             dstPtr[dstIdx] = brighten_fmaf((float)srcPtr[srcIdx], alpha[id_z], beta[id_z]);
 //             srcIdx++;
 //             dstIdx++;
 //         }
@@ -645,48 +437,236 @@ RppStatus hip_exec_brightness_batch(Rpp8u *srcPtr, Rpp8u *dstPtr, rpp::Handle& h
 //         return;
 //     }
 
-//     uint2 src = *((uint2 *)(&input[srcIdx]));
+//     uint2 src = *((uint2 *)(&srcPtr[srcIdx]));
 //     uint2 dst;
 
-//     float4 alpha4 = (float4)alpha[id_y];
-//     float4 beta4 = (float4)beta[id_y];
+//     float4 alpha4 = (float4)alpha[id_z];
+//     float4 beta4 = (float4)beta[id_z];
 
 //     dst.x = rpp_hip_pack(rpp_hip_unpack(src.x) * alpha4 + beta4);
 //     dst.y = rpp_hip_pack(rpp_hip_unpack(src.y) * alpha4 + beta4);
 
-//     *((uint2 *)(&output[dstIdx])) = dst;
+//     *((uint2 *)(&dstPtr[dstIdx])) = dst;
+// }
+
+// extern "C" __global__ void brightness_pln_batch(uchar *srcPtr,
+//                                                 uchar *dstPtr,
+//                                                 float *alpha,
+//                                                 float *beta,
+//                                                 uint *srcWidth,
+//                                                 uint *srcHeight,
+//                                                 uint srcStride,
+//                                                 uint dstStride,
+//                                                 uint srcImageSizeMax,
+//                                                 uint dstImageSizeMax,
+//                                                 uint channel,
+//                                                 unsigned long long *batch_index)
+// {
+//     int id_x = (hipBlockIdx_x * hipBlockDim_x + hipThreadIdx_x) * 8;
+//     int id_y = hipBlockIdx_y * hipBlockDim_y + hipThreadIdx_y;
+//     int id_z = hipBlockIdx_z * hipBlockDim_z + hipThreadIdx_z;
+
+//     int currentChannel = id_z % channel;
+//     id_z /= channel;
+
+//     int srcElementsInRow = srcWidth[id_z];
+
+//     if ((id_y >= srcHeight[id_z]) || (id_x >= srcElementsInRow))
+//     {
+//         return;
+//     }
+
+//     uint srcIdx = batch_index[id_z] + (srcImageSizeMax * currentChannel) + id_y * srcStride + id_x;
+//     uint dstIdx = batch_index[id_z] + (dstImageSizeMax * currentChannel) + id_y * dstStride + id_x;
+
+//     if (id_x + 7 >= srcElementsInRow)
+//     {
+//         int diff = srcElementsInRow - id_x;
+//         for (int x = 0; x < diff; x++)
+//         {
+//             dstPtr[dstIdx] = brighten_fmaf((float)srcPtr[srcIdx], alpha[id_z], beta[id_z]);
+//             srcIdx++;
+//             dstIdx++;
+//         }
+
+//         return;
+//     }
+
+//     uint2 src = *((uint2 *)(&srcPtr[srcIdx]));
+//     uint2 dst;
+
+//     float4 alpha4 = (float4)alpha[id_z];
+//     float4 beta4 = (float4)beta[id_z];
+
+//     dst.x = rpp_hip_pack(rpp_hip_unpack(src.x) * alpha4 + beta4);
+//     dst.y = rpp_hip_pack(rpp_hip_unpack(src.y) * alpha4 + beta4);
+
+//     *((uint2 *)(&dstPtr[dstIdx])) = dst;
 // }
 
 // #if defined(STATIC)
 // RppStatus hip_exec_brightness_batch(Rpp8u *srcPtr, Rpp8u *dstPtr, rpp::Handle& handle, RppiChnFormat chnFormat, Rpp32u channel, Rpp32s plnpkdind, Rpp32u max_height, Rpp32u max_width)
 // {
-//     int max_image_size = max_height * max_width * channel;
-//     int max_buffer_size = max_height * max_width * channel * handle.GetBatchSize();
-//     std::cerr << "\n\nmax_image_size = " << max_image_size;
-//     std::cerr << "\n\nhandle.GetBatchSize() = " << handle.GetBatchSize();
+//     if (plnpkdind == 3)
+//     {
+//         uint srcStride = max_width * channel;
+//         uint dstStride = max_width * channel;
 
-//     int localThreads_x = 256;
-//     int localThreads_y = 1;
-//     int localThreads_z = 1;
-//     int globalThreads_x = (max_image_size + 7) >> 3;
-//     // int globalThreads_x = max_image_size >> 3;
-//     int globalThreads_y = handle.GetBatchSize();
-//     int globalThreads_z = 1;
+//         int localThreads_x = 16;
+//         int localThreads_y = 16;
+//         int localThreads_z = 1;
+//         int globalThreads_x = (int)(max_width * 3 + 7) >> 3;
+//         int globalThreads_y = max_height;
+//         int globalThreads_z = handle.GetBatchSize();
 
+//         hipLaunchKernelGGL(brightness_pkd_batch,
+//                            dim3(ceil((float)globalThreads_x/localThreads_x), ceil((float)globalThreads_y/localThreads_y), ceil((float)globalThreads_z/localThreads_z)),
+//                            dim3(localThreads_x, localThreads_y, localThreads_z),
+//                            0,
+//                            handle.GetStream(),
+//                            srcPtr,
+//                            dstPtr,
+//                            handle.GetInitHandle()->mem.mgpu.floatArr[0].floatmem,
+//                            handle.GetInitHandle()->mem.mgpu.floatArr[1].floatmem,
+//                            handle.GetInitHandle()->mem.mgpu.srcSize.width,
+//                            handle.GetInitHandle()->mem.mgpu.srcSize.height,
+//                            srcStride,
+//                            dstStride,
+//                            handle.GetInitHandle()->mem.mgpu.srcBatchIndex);
+//     }
+//     else
+//     {
+//         uint srcStride = max_width;
+//         uint dstStride = max_width;
 
+//         uint srcImageSizeMax = max_width * max_height;
+//         uint dstImageSizeMax = max_width * max_height;
 
-//     hipLaunchKernelGGL(brightness_batch,
-//                        dim3(ceil((float)globalThreads_x/localThreads_x), ceil((float)globalThreads_y/localThreads_y), ceil((float)globalThreads_z/localThreads_z)),
-//                        dim3(localThreads_x, localThreads_y, localThreads_z),
-//                        0,
-//                        handle.GetStream(),
-//                        srcPtr,
-//                        dstPtr,
-//                        handle.GetInitHandle()->mem.mgpu.floatArr[0].floatmem,
-//                        handle.GetInitHandle()->mem.mgpu.floatArr[1].floatmem,
-//                        handle.GetInitHandle()->mem.mgpu.srcBatchIndex,
-//                        max_buffer_size);
+//         int localThreads_x = 16;
+//         int localThreads_y = 16;
+//         int localThreads_z = 1;
+//         int globalThreads_x = (max_width + 7) >> 3;
+//         int globalThreads_y = max_height;
+//         int globalThreads_z = channel * handle.GetBatchSize();
+
+//         hipLaunchKernelGGL(brightness_pln_batch,
+//                            dim3(ceil((float)globalThreads_x/localThreads_x), ceil((float)globalThreads_y/localThreads_y), ceil((float)globalThreads_z/localThreads_z)),
+//                            dim3(localThreads_x, localThreads_y, localThreads_z),
+//                            0,
+//                            handle.GetStream(),
+//                            srcPtr,
+//                            dstPtr,
+//                            handle.GetInitHandle()->mem.mgpu.floatArr[0].floatmem,
+//                            handle.GetInitHandle()->mem.mgpu.floatArr[1].floatmem,
+//                            handle.GetInitHandle()->mem.mgpu.srcSize.width,
+//                            handle.GetInitHandle()->mem.mgpu.srcSize.height,
+//                            srcStride,
+//                            dstStride,
+//                            srcImageSizeMax,
+//                            dstImageSizeMax,
+//                            channel,
+//                            handle.GetInitHandle()->mem.mgpu.srcBatchIndex);
+//     }
 
 //     return RPP_SUCCESS;
 // }
 // #endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// 12 - WORKING - fmaf | Remove unnecessary arguments | Replicate OpenVX style (PLN1, PLN3, PKD3), Reduce dimensions
+
+// End to end time [ Format - Vega10 time(s) | Vega 20 time(s) | Type ]
+
+// 8 224x224 images GPU Time - BatchPD : 0.000609s | --s | PKD3
+// 8 224x224 images GPU Time - BatchPD : 0.000555s | --s | PLN3
+// 8 224x224 images GPU Time - BatchPD : 0.000448s | --s | PLN1
+
+// 32 3840x2160 images GPU Time - BatchPD : 0.009687s | --s | PKD3
+// 32 3840x2160 images GPU Time - BatchPD : 0.009727s | --s | PLN3
+// 32 3840x2160 images GPU Time - BatchPD : 0.003947s | --s | PLN1
+
+// Profiler time
+
+// 8 224x224 images GPU Time - BatchPD : = 0.000039028s | --s | PKD3
+// 8 224x224 images GPU Time - BatchPD : = 0.000038271s | --s | PLN3
+// 8 224x224 images GPU Time - BatchPD : = 0.000010519s | --s | PLN1
+
+// 32 3840x2160 images GPU Time - BatchPD : = 0.004577556s | ? | PKD3
+// 32 3840x2160 images GPU Time - BatchPD : = 0.004539694s | ? | PLN3
+// 32 3840x2160 images GPU Time - BatchPD : = 0.001687579s | ? | PLN1
+
+extern "C" __global__ void brightness_batch(unsigned char *srcPtr,
+                                            unsigned char *dstPtr,
+                                            float *alpha,
+                                            float *beta,
+                                            unsigned long long *batch_index)
+{
+    int id_x = (hipBlockIdx_x * hipBlockDim_x + hipThreadIdx_x) * 8;
+    int id_y = hipBlockIdx_y * hipBlockDim_y + hipThreadIdx_y;
+
+    uint srcIdx = batch_index[id_y] + id_x;
+    uint dstIdx = batch_index[id_y] + id_x;
+
+    uint2 src = *((uint2 *)(&srcPtr[srcIdx]));
+    uint2 dst;
+
+    float4 f4_1, f4_2;
+    f4_1 = rpp_hip_unpack(src.x);
+    f4_2 = rpp_hip_unpack(src.y);
+
+    f4_1.x = fmaf(alpha[id_y], f4_1.x, beta[id_y]);
+    f4_1.y = fmaf(alpha[id_y], f4_1.y, beta[id_y]);
+    f4_1.z = fmaf(alpha[id_y], f4_1.z, beta[id_y]);
+    f4_1.w = fmaf(alpha[id_y], f4_1.w, beta[id_y]);
+
+    f4_2.x = fmaf(alpha[id_y], f4_2.x, beta[id_y]);
+    f4_2.y = fmaf(alpha[id_y], f4_2.y, beta[id_y]);
+    f4_2.z = fmaf(alpha[id_y], f4_2.z, beta[id_y]);
+    f4_2.w = fmaf(alpha[id_y], f4_2.w, beta[id_y]);
+
+    dst.x = rpp_hip_pack(f4_1);
+    dst.y = rpp_hip_pack(f4_2);
+
+    *((uint2 *)(&dstPtr[dstIdx])) = dst;
+}
+
+#if defined(STATIC)
+RppStatus hip_exec_brightness_batch(Rpp8u *srcPtr, Rpp8u *dstPtr, rpp::Handle& handle, RppiChnFormat chnFormat, Rpp32u channel, Rpp32s plnpkdind, Rpp32u max_height, Rpp32u max_width)
+{
+    int max_image_size = max_height * max_width * channel;
+
+    int localThreads_x = 256;
+    int localThreads_y = 1;
+    int localThreads_z = 1;
+    int globalThreads_x = (max_image_size + 7) >> 3;
+    int globalThreads_y = handle.GetBatchSize();
+    int globalThreads_z = 1;
+
+    hipLaunchKernelGGL(brightness_batch,
+                       dim3(ceil((float)globalThreads_x/localThreads_x), ceil((float)globalThreads_y/localThreads_y), ceil((float)globalThreads_z/localThreads_z)),
+                       dim3(localThreads_x, localThreads_y, localThreads_z),
+                       0,
+                       handle.GetStream(),
+                       srcPtr,
+                       dstPtr,
+                       handle.GetInitHandle()->mem.mgpu.floatArr[0].floatmem,
+                       handle.GetInitHandle()->mem.mgpu.floatArr[1].floatmem,
+                       handle.GetInitHandle()->mem.mgpu.srcBatchIndex);
+
+    return RPP_SUCCESS;
+}
+#endif
